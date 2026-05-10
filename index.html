@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Neon Breakout Deluxe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            margin: 0;
+            overflow: hidden;
+            touch-action: none;
+            color: white;
+        }
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            padding-top: 10px;
+        }
+        canvas {
+            background: #1e293b;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.1);
+            max-width: 95vw;
+            display: block;
+        }
+        .ui-panel {
+            backdrop-filter: blur(8px);
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="mb-2 text-center">
+        <h1 class="text-xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">NEON BREAKOUT</h1>
+        <div class="flex gap-6 justify-center mt-0">
+            <p class="text-gray-400 text-xs md:text-base">Score: <span id="score-display" class="text-white font-mono font-bold">000</span></p>
+            <p class="text-gray-400 text-xs md:text-base">Lives: <span id="lives-display" class="text-pink-500 font-mono font-bold">❤❤❤</span></p>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div class="mt-2 text-[10px] text-gray-500 hidden md:block">
+        ← → キー または マウスで操作
+    </div>
+    <div class="mt-2 text-[10px] text-gray-500 md:hidden text-center px-4">
+        画面の下半分を左右にスワイプして操作
+    </div>
+
+    <!-- オーバーレイ -->
+    <div id="overlay" class="absolute inset-0 flex items-center justify-center z-10 ui-panel rounded-xl m-4 md:m-20">
+        <div class="text-center p-8">
+            <h2 id="overlay-title" class="text-3xl font-bold mb-2 text-blue-400">NEON BREAKOUT</h2>
+            <p id="overlay-msg" class="mb-6 text-gray-300 italic text-sm">パドルを動かしてブロックを壊せ！</p>
+            <button id="start-btn" class="btn px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-full text-lg font-bold shadow-lg shadow-blue-900/20">
+                START GAME
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const scoreDisplay = document.getElementById('score-display');
+const livesDisplay = document.getElementById('lives-display');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('start-btn');
+const overlayTitle = document.getElementById('overlay-title');
+const overlayMsg = document.getElementById('overlay-msg');
+
+const config = {
+    rowCount: 5,
+    columnCount: 7,
+    ballRadius: 8,
+    paddleHeight: 14,
+    brickPadding: 8,
+    brickOffsetTop: 30, // 少し上に寄せてスペースを確保
+    brickOffsetLeft: 12
+};
+
+let gameState = {
+    score: 0,
+    lives: 3,
+    running: false,
+    activeEffects: { wide: 0, slow: 0 }
+};
+
+let ball, paddle, bricks = [], powerUps = [], drone;
+let pressedKeys = {};
+
+function initGame() {
+    const isMobile = window.innerWidth < 768;
+    const containerWidth = Math.min(window.innerWidth * 0.95, 600);
+    
+    canvas.width = containerWidth;
+    // スマホの場合は高さをしっかり確保し、パドルとブロックの距離を最大化する
+    canvas.height = isMobile ? Math.min(window.innerHeight * 0.7, 500) : 450;
+    
+    config.paddleWidth = canvas.width / (isMobile ? 4 : 5);
+    initBricks();
+    initDrone();
+    resetEntities();
+}
+
+function initBricks() {
+    bricks = [];
+    const availableWidth = canvas.width - (config.brickOffsetLeft * 2);
+    config.brickWidth = (availableWidth - (config.brickPadding * (config.columnCount - 1))) / config.columnCount;
+    config.brickHeight = 20;
+
+    for (let c = 0; c < config.columnCount; c++) {
+        bricks[c] = [];
+        for (let r = 0; r < config.rowCount; r++) {
+            let type = 'N';
+            const rand = Math.random();
+            if (rand < 0.10) type = 'W'; 
+            else if (rand < 0.18) type = 'S'; 
+            else if (rand < 0.22) type = 'L'; 
+
+            bricks[c][r] = { 
+                x: 0, 
+                y: 0, 
+                status: 1, 
+                color: `hsl(${200 + (r * 25)}, 75%, 60%)`,
+                type: type
+            };
+        }
+    }
+}
+
+function initDrone() {
+    drone = {
+        x: canvas.width / 4,
+        y: canvas.height * 0.35, // ブロックのすぐ下に配置
+        width: canvas.width * 0.22,
+        height: 10,
+        dx: 1.8,
+        color: "#ef4444"
+    };
+}
+
+function resetEntities() {
+    const isMobile = window.innerWidth < 768;
+    
+    paddle = {
+        x: (canvas.width - config.paddleWidth) / 2,
+        y: canvas.height - config.paddleHeight - 25, // 指で操作しやすいよう底から少し浮かす
+        width: config.paddleWidth,
+        height: config.paddleHeight
+    };
+    
+    ball = {
+        x: canvas.width / 2,
+        y: paddle.y - config.ballRadius - 5,
+        dx: 2 * (Math.random() > 0.5 ? 1 : -1),
+        dy: isMobile ? -3.5 : -4.5, // スマホは少しゆっくりから開始
+        radius: config.ballRadius
+    };
+    powerUps = [];
+    pressedKeys = {};
+}
+
+function drawBall() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#3b82f6";
+    ctx.fill();
+    ctx.closePath();
+    ctx.restore();
+}
+
+function drawPaddle() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 8);
+    ctx.fillStyle = "#3b82f6";
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "rgba(59, 130, 246, 0.5)";
+    ctx.fill();
+    ctx.closePath();
+    ctx.restore();
+}
+
+function drawBricks() {
+    for (let c = 0; c < config.columnCount; c++) {
+        for (let r = 0; r < config.rowCount; r++) {
+            const b = bricks[c][r];
+            if (b.status === 1) {
+                const brickX = (c * (config.brickWidth + config.brickPadding)) + config.brickOffsetLeft;
+                const brickY = (r * (config.brickHeight + config.brickPadding)) + config.brickOffsetTop;
+                b.x = brickX;
+                b.y = brickY;
+                
+                ctx.beginPath();
+                ctx.roundRect(brickX, brickY, config.brickWidth, config.brickHeight, 4);
+                ctx.fillStyle = b.color;
+                ctx.fill();
+                
+                if (b.type !== 'N') {
+                    ctx.fillStyle = "rgba(255,255,255,0.7)";
+                    ctx.font = "bold 10px Inter";
+                    ctx.textAlign = "center";
+                    ctx.fillText(b.type, brickX + config.brickWidth/2, brickY + 14);
+                }
+                ctx.closePath();
+            }
+        }
+    }
+}
+
+function drawDrone() {
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(drone.x, drone.y, drone.width, drone.height, 4);
+    ctx.fillStyle = drone.color;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = drone.color;
+    ctx.fill();
+    ctx.closePath();
+    ctx.restore();
+}
+
+function drawPowerUps() {
+    powerUps.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
+        ctx.fillStyle = "white";
+        ctx.font = "bold 10px Inter";
+        ctx.textAlign = "center";
+        ctx.fillText(p.type, p.x, p.y + 4);
+        ctx.closePath();
+    });
+}
+
+function collisionDetection() {
+    for (let c = 0; c < config.columnCount; c++) {
+        for (let r = 0; r < config.rowCount; r++) {
+            const b = bricks[c][r];
+            if (b.status === 1) {
+                if (ball.x + ball.radius > b.x && ball.x - ball.radius < b.x + config.brickWidth && 
+                    ball.y + ball.radius > b.y && ball.y - ball.radius < b.y + config.brickHeight) {
+                    
+                    ball.dy = -ball.dy;
+                    b.status = 0;
+                    gameState.score += 10;
+                    scoreDisplay.innerText = gameState.score.toString().padStart(3, '0');
+                    
+                    if (b.type !== 'N') {
+                        let color = b.type === 'W' ? '#3b82f6' : (b.type === 'S' ? '#22d3ee' : '#ec4899');
+                        powerUps.push({ x: b.x + config.brickWidth/2, y: b.y + config.brickHeight, type: b.type, color: color, dy: 2 });
+                    }
+
+                    if (gameState.score >= config.rowCount * config.columnCount * 10) {
+                        endGame(true);
+                    }
+                }
+            }
+        }
+    }
+}
+
+function update() {
+    if (!gameState.running) return;
+
+    // キーボード
+    const paddleSpeed = 8; 
+    if (pressedKeys["ArrowLeft"] || pressedKeys["Left"]) paddle.x -= paddleSpeed;
+    if (pressedKeys["ArrowRight"] || pressedKeys["Right"]) paddle.x += paddleSpeed;
+
+    if (paddle.x < 0) paddle.x = 0;
+    if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
+
+    // ドローン
+    drone.x += drone.dx;
+    if (drone.x <= 0 || drone.x + drone.width >= canvas.width) drone.dx *= -1;
+
+    if (ball.x + ball.radius > drone.x && ball.x - ball.radius < drone.x + drone.width && 
+        ball.y + ball.radius > drone.y && ball.y - ball.radius < drone.y + drone.height) {
+        ball.dy = -ball.dy;
+        ball.y = ball.dy > 0 ? drone.y + drone.height + ball.radius : drone.y - ball.radius;
+    }
+
+    // アイテム
+    for(let i = powerUps.length - 1; i >= 0; i--) {
+        let p = powerUps[i];
+        p.y += p.dy;
+        if (p.y + 11 > paddle.y && p.y - 11 < paddle.y + paddle.height && p.x > paddle.x && p.x < paddle.x + paddle.width) {
+            applyPowerUp(p.type);
+            powerUps.splice(i, 1);
+        } else if (p.y > canvas.height) {
+            powerUps.splice(i, 1);
+        }
+    }
+
+    if (gameState.activeEffects.wide > 0) {
+        gameState.activeEffects.wide--;
+        if (gameState.activeEffects.wide === 0) paddle.width = config.paddleWidth;
+    }
+    if (gameState.activeEffects.slow > 0) gameState.activeEffects.slow--;
+
+    // 速度計算
+    const isMobile = window.innerWidth < 768;
+    const baseSpeed = gameState.activeEffects.slow > 0 ? 3 : (isMobile ? 4.5 : 6);
+    const currentSpeed = Math.sqrt(ball.dx**2 + ball.dy**2);
+    ball.dx *= baseSpeed / currentSpeed;
+    ball.dy *= baseSpeed / currentSpeed;
+
+    // 壁・パドル衝突
+    if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
+        ball.dx = -ball.dx;
+    }
+    if (ball.y + ball.dy < ball.radius) {
+        ball.dy = -ball.dy;
+    } 
+    else if (ball.y + ball.dy > paddle.y - ball.radius) {
+        // パドルの横に当たった際も少し救済
+        if (ball.x > paddle.x - 5 && ball.x < paddle.x + paddle.width + 5 && ball.y < paddle.y + paddle.height) {
+            let hitPos = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
+            ball.dx = hitPos * 4.5;
+            ball.dy = -Math.abs(ball.dy);
+            ball.y = paddle.y - ball.radius;
+        } 
+        else if (ball.y > canvas.height) {
+            gameState.lives--;
+            updateLivesUI();
+            if (gameState.lives <= 0) endGame(false);
+            else resetEntities();
+        }
+    }
+
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+
+    collisionDetection();
+}
+
+function applyPowerUp(type) {
+    if (type === 'W') {
+        paddle.width = config.paddleWidth * 1.8;
+        gameState.activeEffects.wide = 500;
+    } else if (type === 'S') {
+        gameState.activeEffects.slow = 500;
+    } else if (type === 'L') {
+        gameState.lives++;
+        updateLivesUI();
+    }
+}
+
+function updateLivesUI() {
+    livesDisplay.innerText = "❤".repeat(Math.max(0, gameState.lives));
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBricks();
+    drawDrone();
+    drawPowerUps();
+    drawPaddle();
+    drawBall();
+}
+
+function gameLoop() {
+    if (!gameState.running) return;
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function movePaddle(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const relativeX = (clientX - rect.left) * (canvas.width / rect.width);
+    if (relativeX > 0 && relativeX < canvas.width) {
+        paddle.x = relativeX - paddle.width / 2;
+        if (paddle.x < 0) paddle.x = 0;
+        if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
+    }
+}
+
+canvas.addEventListener("mousemove", (e) => movePaddle(e.clientX));
+canvas.addEventListener("touchstart", (e) => {
+    movePaddle(e.touches[0].clientX);
+}, { passive: true });
+canvas.addEventListener("touchmove", (e) => {
+    e.preventDefault();
+    movePaddle(e.touches[0].clientX);
+}, { passive: false });
+
+document.addEventListener("keydown", (e) => {
+    pressedKeys[e.key] = true;
+    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight", " "].indexOf(e.key) > -1) e.preventDefault();
+}, false);
+
+document.addEventListener("keyup", (e) => {
+    pressedKeys[e.key] = false;
+}, false);
+
+function startGame() {
+    overlay.classList.add('hidden');
+    gameState.score = 0;
+    gameState.lives = 3;
+    gameState.running = true;
+    gameState.activeEffects = { wide: 0, slow: 0 };
+    scoreDisplay.innerText = "000";
+    updateLivesUI();
+    initGame();
+    gameLoop();
+}
+
+function endGame(win) {
+    gameState.running = false;
+    overlay.classList.remove('hidden');
+    overlayTitle.innerText = win ? "YOU WIN!" : "GAME OVER";
+    overlayTitle.className = win ? "text-3xl font-bold mb-2 text-green-400" : "text-3xl font-bold mb-2 text-pink-500";
+    overlayMsg.innerText = `スコア: ${gameState.score}`;
+    startBtn.innerText = "RETRY";
+}
+
+startBtn.addEventListener('click', startGame);
+
+window.addEventListener('resize', () => {
+    if (!gameState.running) initGame();
+});
+
+window.onload = initGame;
+</script>
+</body>
+</html>
