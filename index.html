@@ -23,22 +23,22 @@
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            padding-top: 10px;
+            padding-top: env(safe-area-inset-top, 10px);
         }
         canvas {
             background: #1e293b;
             border-radius: 12px;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), 0 0 40px rgba(59, 130, 246, 0.1);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
             max-width: 95vw;
             display: block;
         }
         .ui-panel {
             backdrop-filter: blur(8px);
-            background: rgba(30, 41, 59, 0.8);
+            background: rgba(30, 41, 59, 0.85);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .btn {
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.2s;
         }
         .btn:active {
             transform: scale(0.95);
@@ -49,29 +49,26 @@
 
 <div id="game-container">
     <div class="mb-2 text-center">
-        <h1 class="text-xl md:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">NEON BREAKOUT</h1>
-        <div class="flex gap-6 justify-center mt-0">
-            <p class="text-gray-400 text-xs md:text-base">Score: <span id="score-display" class="text-white font-mono font-bold">000</span></p>
-            <p class="text-gray-400 text-xs md:text-base">Lives: <span id="lives-display" class="text-pink-500 font-mono font-bold">❤❤❤</span></p>
+        <h1 class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-cyan-300">NEON BREAKOUT</h1>
+        <div class="flex gap-4 justify-center mt-0">
+            <p class="text-gray-400 text-xs">Score: <span id="score-display" class="text-white font-mono font-bold">000</span></p>
+            <p class="text-gray-400 text-xs">Lives: <span id="lives-display" class="text-pink-500 font-mono font-bold">❤❤❤</span></p>
         </div>
     </div>
 
     <canvas id="gameCanvas"></canvas>
 
-    <div class="mt-2 text-[10px] text-gray-500 hidden md:block">
-        ← → キー または マウスで操作
-    </div>
-    <div class="mt-2 text-[10px] text-gray-500 md:hidden text-center px-4">
-        画面の下半分を左右にスワイプして操作
+    <div class="mt-4 text-[11px] text-gray-500 text-center px-4">
+        画面の左右をスワイプしてパドルを操作
     </div>
 
-    <!-- オーバーレイ -->
-    <div id="overlay" class="absolute inset-0 flex items-center justify-center z-10 ui-panel rounded-xl m-4 md:m-20">
-        <div class="text-center p-8">
-            <h2 id="overlay-title" class="text-3xl font-bold mb-2 text-blue-400">NEON BREAKOUT</h2>
-            <p id="overlay-msg" class="mb-6 text-gray-300 italic text-sm">パドルを動かしてブロックを壊せ！</p>
-            <button id="start-btn" class="btn px-8 py-3 bg-blue-600 hover:bg-blue-500 rounded-full text-lg font-bold shadow-lg shadow-blue-900/20">
-                START GAME
+    <!-- スタート画面 -->
+    <div id="overlay" class="absolute inset-0 flex items-center justify-center z-10 ui-panel rounded-xl m-4">
+        <div class="text-center p-6">
+            <h2 id="overlay-title" class="text-2xl font-bold mb-2 text-blue-400">READY?</h2>
+            <p id="overlay-msg" class="mb-6 text-gray-300 text-xs">ブロックを全部こわそう！</p>
+            <button id="start-btn" class="btn px-10 py-3 bg-blue-600 hover:bg-blue-500 rounded-full text-lg font-bold">
+                START
             </button>
         </div>
     </div>
@@ -88,13 +85,13 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayMsg = document.getElementById('overlay-msg');
 
 const config = {
-    rowCount: 5,
-    columnCount: 7,
-    ballRadius: 8,
-    paddleHeight: 14,
-    brickPadding: 8,
-    brickOffsetTop: 30, // 少し上に寄せてスペースを確保
-    brickOffsetLeft: 12
+    rowCount: 4,
+    columnCount: 6,
+    ballRadius: 9,
+    paddleHeight: 16,
+    brickPadding: 10,
+    brickOffsetTop: 20,
+    brickOffsetLeft: 15
 };
 
 let gameState = {
@@ -109,13 +106,13 @@ let pressedKeys = {};
 
 function initGame() {
     const isMobile = window.innerWidth < 768;
-    const containerWidth = Math.min(window.innerWidth * 0.95, 600);
+    const containerWidth = Math.min(window.innerWidth * 0.95, 500);
     
     canvas.width = containerWidth;
-    // スマホの場合は高さをしっかり確保し、パドルとブロックの距離を最大化する
-    canvas.height = isMobile ? Math.min(window.innerHeight * 0.7, 500) : 450;
+    const maxH = window.innerHeight - 180;
+    canvas.height = Math.max(400, Math.min(maxH, 600));
     
-    config.paddleWidth = canvas.width / (isMobile ? 4 : 5);
+    config.paddleWidth = canvas.width / 4;
     initBricks();
     initDrone();
     resetEntities();
@@ -125,23 +122,22 @@ function initBricks() {
     bricks = [];
     const availableWidth = canvas.width - (config.brickOffsetLeft * 2);
     config.brickWidth = (availableWidth - (config.brickPadding * (config.columnCount - 1))) / config.columnCount;
-    config.brickHeight = 20;
+    config.brickHeight = 24;
 
     for (let c = 0; c < config.columnCount; c++) {
         bricks[c] = [];
         for (let r = 0; r < config.rowCount; r++) {
             let type = 'N';
             const rand = Math.random();
-            if (rand < 0.10) type = 'W'; 
-            else if (rand < 0.18) type = 'S'; 
-            else if (rand < 0.22) type = 'L'; 
+            // どのブロックにアイテムが入っているかは内部的に保持するが、描画はしない
+            if (rand < 0.12) type = 'W'; 
+            else if (rand < 0.20) type = 'S'; 
+            else if (rand < 0.25) type = 'L'; 
 
             bricks[c][r] = { 
-                x: 0, 
-                y: 0, 
-                status: 1, 
-                color: `hsl(${200 + (r * 25)}, 75%, 60%)`,
-                type: type
+                x: 0, y: 0, status: 1, 
+                color: `hsl(${190 + (r * 35)}, 80%, 60%)`,
+                type: type 
             };
         }
     }
@@ -150,33 +146,30 @@ function initBricks() {
 function initDrone() {
     drone = {
         x: canvas.width / 4,
-        y: canvas.height * 0.35, // ブロックのすぐ下に配置
-        width: canvas.width * 0.22,
+        y: canvas.height * 0.3,
+        width: canvas.width * 0.25,
         height: 10,
-        dx: 1.8,
-        color: "#ef4444"
+        dx: 1.5,
+        color: "#f87171"
     };
 }
 
 function resetEntities() {
-    const isMobile = window.innerWidth < 768;
-    
     paddle = {
         x: (canvas.width - config.paddleWidth) / 2,
-        y: canvas.height - config.paddleHeight - 25, // 指で操作しやすいよう底から少し浮かす
+        y: canvas.height - config.paddleHeight - 20,
         width: config.paddleWidth,
         height: config.paddleHeight
     };
     
     ball = {
         x: canvas.width / 2,
-        y: paddle.y - config.ballRadius - 5,
+        y: paddle.y - 20,
         dx: 2 * (Math.random() > 0.5 ? 1 : -1),
-        dy: isMobile ? -3.5 : -4.5, // スマホは少しゆっくりから開始
+        dy: -3,
         radius: config.ballRadius
     };
     powerUps = [];
-    pressedKeys = {};
 }
 
 function drawBall() {
@@ -185,7 +178,7 @@ function drawBall() {
     ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
     ctx.fillStyle = "#fff";
     ctx.shadowBlur = 10;
-    ctx.shadowColor = "#3b82f6";
+    ctx.shadowColor = "#60a5fa";
     ctx.fill();
     ctx.closePath();
     ctx.restore();
@@ -196,7 +189,7 @@ function drawPaddle() {
     ctx.beginPath();
     ctx.roundRect(paddle.x, paddle.y, paddle.width, paddle.height, 8);
     ctx.fillStyle = "#3b82f6";
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 15;
     ctx.shadowColor = "rgba(59, 130, 246, 0.5)";
     ctx.fill();
     ctx.closePath();
@@ -214,16 +207,10 @@ function drawBricks() {
                 b.y = brickY;
                 
                 ctx.beginPath();
-                ctx.roundRect(brickX, brickY, config.brickWidth, config.brickHeight, 4);
+                ctx.roundRect(brickX, brickY, config.brickWidth, config.brickHeight, 6);
                 ctx.fillStyle = b.color;
                 ctx.fill();
-                
-                if (b.type !== 'N') {
-                    ctx.fillStyle = "rgba(255,255,255,0.7)";
-                    ctx.font = "bold 10px Inter";
-                    ctx.textAlign = "center";
-                    ctx.fillText(b.type, brickX + config.brickWidth/2, brickY + 14);
-                }
+                // 文字を表示するコードを削除して、見た目を統一
                 ctx.closePath();
             }
         }
@@ -245,13 +232,13 @@ function drawDrone() {
 function drawPowerUps() {
     powerUps.forEach(p => {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
         ctx.fillStyle = p.color;
         ctx.fill();
         ctx.fillStyle = "white";
-        ctx.font = "bold 10px Inter";
+        ctx.font = "bold 12px Inter";
         ctx.textAlign = "center";
-        ctx.fillText(p.type, p.x, p.y + 4);
+        ctx.fillText(p.type, p.x, p.y + 5);
         ctx.closePath();
     });
 }
@@ -269,9 +256,10 @@ function collisionDetection() {
                     gameState.score += 10;
                     scoreDisplay.innerText = gameState.score.toString().padStart(3, '0');
                     
+                    // 壊れた瞬間にアイテムが出てくる
                     if (b.type !== 'N') {
                         let color = b.type === 'W' ? '#3b82f6' : (b.type === 'S' ? '#22d3ee' : '#ec4899');
-                        powerUps.push({ x: b.x + config.brickWidth/2, y: b.y + config.brickHeight, type: b.type, color: color, dy: 2 });
+                        powerUps.push({ x: b.x + config.brickWidth/2, y: b.y + config.brickHeight, type: b.type, color: color, dy: 1.8 });
                     }
 
                     if (gameState.score >= config.rowCount * config.columnCount * 10) {
@@ -286,15 +274,10 @@ function collisionDetection() {
 function update() {
     if (!gameState.running) return;
 
-    // キーボード
-    const paddleSpeed = 8; 
+    const paddleSpeed = 10; 
     if (pressedKeys["ArrowLeft"] || pressedKeys["Left"]) paddle.x -= paddleSpeed;
     if (pressedKeys["ArrowRight"] || pressedKeys["Right"]) paddle.x += paddleSpeed;
 
-    if (paddle.x < 0) paddle.x = 0;
-    if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
-
-    // ドローン
     drone.x += drone.dx;
     if (drone.x <= 0 || drone.x + drone.width >= canvas.width) drone.dx *= -1;
 
@@ -304,11 +287,10 @@ function update() {
         ball.y = ball.dy > 0 ? drone.y + drone.height + ball.radius : drone.y - ball.radius;
     }
 
-    // アイテム
     for(let i = powerUps.length - 1; i >= 0; i--) {
         let p = powerUps[i];
         p.y += p.dy;
-        if (p.y + 11 > paddle.y && p.y - 11 < paddle.y + paddle.height && p.x > paddle.x && p.x < paddle.x + paddle.width) {
+        if (p.y + 14 > paddle.y && p.y - 14 < paddle.y + paddle.height && p.x > paddle.x && p.x < paddle.x + paddle.width) {
             applyPowerUp(p.type);
             powerUps.splice(i, 1);
         } else if (p.y > canvas.height) {
@@ -322,14 +304,11 @@ function update() {
     }
     if (gameState.activeEffects.slow > 0) gameState.activeEffects.slow--;
 
-    // 速度計算
-    const isMobile = window.innerWidth < 768;
-    const baseSpeed = gameState.activeEffects.slow > 0 ? 3 : (isMobile ? 4.5 : 6);
+    const baseSpeed = gameState.activeEffects.slow > 0 ? 2.5 : 4.2;
     const currentSpeed = Math.sqrt(ball.dx**2 + ball.dy**2);
     ball.dx *= baseSpeed / currentSpeed;
     ball.dy *= baseSpeed / currentSpeed;
 
-    // 壁・パドル衝突
     if (ball.x + ball.dx > canvas.width - ball.radius || ball.x + ball.dx < ball.radius) {
         ball.dx = -ball.dx;
     }
@@ -337,10 +316,9 @@ function update() {
         ball.dy = -ball.dy;
     } 
     else if (ball.y + ball.dy > paddle.y - ball.radius) {
-        // パドルの横に当たった際も少し救済
-        if (ball.x > paddle.x - 5 && ball.x < paddle.x + paddle.width + 5 && ball.y < paddle.y + paddle.height) {
+        if (ball.x > paddle.x - 10 && ball.x < paddle.x + paddle.width + 10 && ball.y < paddle.y + paddle.height) {
             let hitPos = (ball.x - (paddle.x + paddle.width / 2)) / (paddle.width / 2);
-            ball.dx = hitPos * 4.5;
+            ball.dx = hitPos * 4;
             ball.dy = -Math.abs(ball.dy);
             ball.y = paddle.y - ball.radius;
         } 
@@ -361,9 +339,9 @@ function update() {
 function applyPowerUp(type) {
     if (type === 'W') {
         paddle.width = config.paddleWidth * 1.8;
-        gameState.activeEffects.wide = 500;
+        gameState.activeEffects.wide = 600;
     } else if (type === 'S') {
-        gameState.activeEffects.slow = 500;
+        gameState.activeEffects.slow = 600;
     } else if (type === 'L') {
         gameState.lives++;
         updateLivesUI();
@@ -393,17 +371,12 @@ function gameLoop() {
 function movePaddle(clientX) {
     const rect = canvas.getBoundingClientRect();
     const relativeX = (clientX - rect.left) * (canvas.width / rect.width);
-    if (relativeX > 0 && relativeX < canvas.width) {
-        paddle.x = relativeX - paddle.width / 2;
-        if (paddle.x < 0) paddle.x = 0;
-        if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
-    }
+    paddle.x = relativeX - paddle.width / 2;
+    if (paddle.x < 0) paddle.x = 0;
+    if (paddle.x + paddle.width > canvas.width) paddle.x = canvas.width - paddle.width;
 }
 
 canvas.addEventListener("mousemove", (e) => movePaddle(e.clientX));
-canvas.addEventListener("touchstart", (e) => {
-    movePaddle(e.touches[0].clientX);
-}, { passive: true });
 canvas.addEventListener("touchmove", (e) => {
     e.preventDefault();
     movePaddle(e.touches[0].clientX);
@@ -411,12 +384,9 @@ canvas.addEventListener("touchmove", (e) => {
 
 document.addEventListener("keydown", (e) => {
     pressedKeys[e.key] = true;
-    if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight", " "].indexOf(e.key) > -1) e.preventDefault();
-}, false);
-
-document.addEventListener("keyup", (e) => {
-    pressedKeys[e.key] = false;
-}, false);
+    if(["ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault();
+});
+document.addEventListener("keyup", (e) => pressedKeys[e.key] = false);
 
 function startGame() {
     overlay.classList.add('hidden');
@@ -434,17 +404,12 @@ function endGame(win) {
     gameState.running = false;
     overlay.classList.remove('hidden');
     overlayTitle.innerText = win ? "YOU WIN!" : "GAME OVER";
-    overlayTitle.className = win ? "text-3xl font-bold mb-2 text-green-400" : "text-3xl font-bold mb-2 text-pink-500";
-    overlayMsg.innerText = `スコア: ${gameState.score}`;
+    overlayTitle.className = win ? "text-2xl font-bold mb-2 text-green-400" : "text-2xl font-bold mb-2 text-pink-500";
+    overlayMsg.innerText = `Score: ${gameState.score}`;
     startBtn.innerText = "RETRY";
 }
 
 startBtn.addEventListener('click', startGame);
-
-window.addEventListener('resize', () => {
-    if (!gameState.running) initGame();
-});
-
 window.onload = initGame;
 </script>
 </body>
